@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PDF Generator Demo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+      }
+
+      .container {
+        width: 420px;
+        margin: 60px auto;
+        background: #fff;
+        padding: 20px;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      h1 {
+        margin-bottom: 15px;
+      }
+
+      label {
+        display: block;
+        margin-top: 10px;
+        font-weight: bold;
+      }
+
+      input {
+        width: 100%;
+        padding: 8px;
+        margin-top: 5px;
+      }
+
+      button {
+        margin-top: 18px;
+        padding: 12px;
+        width: 100%;
+        font-size: 15px;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      #status {
+        margin-top: 15px;
+        font-weight: bold;
+        color: #333;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>Invoice PDF</h1>
+
+      <label>Invoice Number</label>
+      <input id="invoiceNo" value="INV-001" />
+
+      <label>Client Name</label>
+      <input id="clientName" value="ABC Pvt Ltd" />
+
+      <label>Amount</label>
+      <input id="amount" value="₹10,000" />
+
+      <button id="downloadBtn">Download PDF</button>
+
+      <p id="status"></p>
+    </div>
+
+    <script>
+      const API_BASE = "http://localhost:4000";
+
+      const downloadBtn = document.getElementById("downloadBtn");
+      const statusEl = document.getElementById("status");
+
+      downloadBtn.onclick = async () => {
+        try {
+          downloadBtn.disabled = true;
+          statusEl.textContent = "Preparing PDF...";
+
+          const invoiceNo = document.getElementById("invoiceNo").value;
+          const clientName = document.getElementById("clientName").value;
+          const amount = document.getElementById("amount").value;
+
+          // Build dynamic HTML (template rendering)
+          const html = `
+            <h1>Invoice ${invoiceNo}</h1>
+            <p><strong>Client:</strong> ${clientName}</p>
+            <p><strong>Amount:</strong> ${amount}</p>
+            <hr />
+            <p>Thank you for your business.</p>
+          `;
+
+          // Step 1: Request PDF generation
+          const res = await fetch(`${API_BASE}/pdf/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              html,
+              meta: {
+                collection: "demo",
+                item_id: 1,
+                field: "pdf",
+              },
+            }),
+          });
+
+          const { job_id } = await res.json();
+
+          // Step 2: Poll until ready
+          pollAndDownload(job_id);
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = "Something went wrong";
+          downloadBtn.disabled = false;
+        }
+      };
+
+      function pollAndDownload(jobId) {
+        const interval = setInterval(async () => {
+          try {
+            const res = await fetch(`${API_BASE}/pdf/status/${jobId}`);
+            const data = await res.json();
+
+            if (data.status === "completed") {
+              clearInterval(interval);
+
+              statusEl.textContent = "Downloading PDF...";
+              window.location.href = `${API_BASE}/pdf/download/${jobId}`;
+
+              downloadBtn.disabled = false;
+              statusEl.textContent = "";
+            }
+
+            if (data.status === "failed") {
+              clearInterval(interval);
+              statusEl.textContent = "PDF generation failed";
+              downloadBtn.disabled = false;
+            }
+          } catch (err) {
+            clearInterval(interval);
+            statusEl.textContent = "Failed to check PDF status";
+            downloadBtn.disabled = false;
+          }
+        }, 1200);
+      }
+    </script>
+  </body>
+</html>
