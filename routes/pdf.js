@@ -50,39 +50,42 @@ router.get("/status/:jobId", async (req, res) => {
 const OUTPUT_DIR = path.resolve("../pdf-worker/output");
 
 router.get("/download/:jobId", (req, res) => {
-  const { jobId } = req.params;
+  const { jobId } = req.params
+  const filename = req.query.filename || `invoice-${jobId}.pdf`
 
-  const filePath = path.join(OUTPUT_DIR, `${jobId}.pdf`);
+  const safeFilename = filename
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/\.pdf$/i, "") + ".pdf"
+
+  const filePath = path.join(OUTPUT_DIR, `${jobId}.pdf`)
 
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "PDF not found" });
+    return res.status(404).json({ error: "PDF not found" })
   }
 
-  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Type", "application/pdf")
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="invoice-${jobId}.pdf"`
-  );
+    `attachment; filename="${safeFilename}"`
+  )
 
-  const stream = fs.createReadStream(filePath);
+  const stream = fs.createReadStream(filePath)
 
-  // 🔑 Pipe file to response
-  stream.pipe(res);
+  stream.pipe(res)
 
-  // ✅ Delete ONLY after successful stream end
   stream.on("close", () => {
     try {
-      fs.unlinkSync(filePath);
+      fs.unlinkSync(filePath)
     } catch (err) {
-      console.error("Failed to delete PDF:", err.message);
+      console.error("Failed to delete PDF:", err.message)
     }
-  });
+  })
 
-  // Safety: handle stream errors
   stream.on("error", (err) => {
-    console.error("Stream error:", err.message);
-    res.end();
-  });
-});
+    console.error("Stream error:", err.message)
+    res.end()
+  })
+})
+
 
 export default router;
