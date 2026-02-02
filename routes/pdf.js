@@ -51,7 +51,7 @@ const OUTPUT_DIR = path.resolve("../pdf-worker/output");
 
 router.get("/download/:jobId", (req, res) => {
   const { jobId } = req.params
-  const filename = req.query.filename || `invoice-${jobId}.pdf`
+  const filename = req.query.filename || `${jobId}.pdf`
 
   const safeFilename = filename
     .replace(/[^a-zA-Z0-9._-]/g, "_")
