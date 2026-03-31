@@ -13,8 +13,6 @@ app.use(cors({
   allowedHeaders: ["Content-Type"]
 }));
 
-app.options("*", cors());   // <-- REQUIRED
-
 app.use(express.json({ limit: "1mb" }));
 
 app.use("/pdf", pdfRoutes);
