@@ -1,4 +1,4 @@
-import "dotenv/config";        // MUST be first
+import "dotenv/config";
 
 import express from "express";
 import pdfRoutes from "./routes/pdf.js";
@@ -9,9 +9,12 @@ const app = express();
 
 app.use(cors({
   origin: "*",
-  methods: ["GET","POST"],
+  methods: ["GET","POST","OPTIONS"],
   allowedHeaders: ["Content-Type"]
-}))
+}));
+
+app.options("*", cors());   // <-- REQUIRED
+
 app.use(express.json({ limit: "1mb" }));
 
 app.use("/pdf", pdfRoutes);
