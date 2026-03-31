@@ -47,44 +47,66 @@ router.get("/status/:jobId", async (req, res) => {
   res.json({ status });
 });
 
-const OUTPUT_DIR = path.resolve("../pdf-worker/output");
+const OUTPUT_DIR = process.env.PDF_OUTPUT_DIR
+  ? path.resolve(process.env.PDF_OUTPUT_DIR)
+  : null;
 
-router.get("/download/:jobId", (req, res) => {
-  const { jobId } = req.params
-  const filename = req.query.filename || `${jobId}.pdf`
+if (!OUTPUT_DIR) {
+  console.error("PDF_OUTPUT_DIR is not set. Exiting.");
+  process.exit(1);
+}
 
-  const safeFilename = filename
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/\.pdf$/i, "") + ".pdf"
+router.get("/download/:jobId", async (req, res) => {
+  const { jobId } = req.params;
 
-  const filePath = path.join(OUTPUT_DIR, `${jobId}.pdf`)
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "PDF not found" })
+  // sanitize jobId — only allow UUID-safe characters
+  if (!/^[a-zA-Z0-9-]+$/.test(jobId)) {
+    return res.status(400).json({ error: "Invalid jobId" });
   }
 
-  res.setHeader("Content-Type", "application/pdf")
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${safeFilename}"`
-  )
+  // check job status before serving
+  const status = await redis.get(`pdf:job:${jobId}`);
+  if (!status) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  if (status !== "done") {
+    return res.status(400).json({ error: "Job not completed", status });
+  }
 
-  const stream = fs.createReadStream(filePath)
+  // sanitize filename: allow only alphanumeric, dash, underscore
+  const rawName = req.query.filename || jobId;
+  const baseName = rawName.replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const safeFilename = `${baseName}.pdf`;
 
-  stream.pipe(res)
+  // resolve and validate path stays inside OUTPUT_DIR
+  const filePath = path.resolve(OUTPUT_DIR, `${jobId}.pdf`);
+  if (!filePath.startsWith(OUTPUT_DIR + path.sep)) {
+    return res.status(400).json({ error: "Invalid jobId" });
+  }
 
-  stream.on("close", () => {
-    try {
-      fs.unlinkSync(filePath)
-    } catch (err) {
-      console.error("Failed to delete PDF:", err.message)
-    }
-  })
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "PDF not found" });
+  }
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"`);
+
+  const stream = fs.createReadStream(filePath);
 
   stream.on("error", (err) => {
-    console.error("Stream error:", err.message)
-    res.end()
-  })
+    console.error("Stream error:", err.message);
+    if (!res.headersSent) res.status(500).json({ error: "Stream error" });
+    else res.end();
+  });
+
+  // delete AFTER response is fully flushed
+  res.on("finish", () => {
+    fs.unlink(filePath, (err) => {
+      if (err) console.error("Failed to delete PDF:", err.message);
+    });
+  });
+
+  stream.pipe(res);
 })
 
 
